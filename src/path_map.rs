@@ -43,7 +43,13 @@ pub fn remap(path: &Path, old: &Path, new: &Path) -> Result<Option<PathBuf>> {
     }
     let p = lexical_absolute(path)?;
     let o = lexical_absolute(old)?;
-    Ok(Some(lexical_absolute(new)?.join(p.strip_prefix(o)?)))
+    let destination = lexical_absolute(new)?;
+    let suffix = p.strip_prefix(o)?;
+    Ok(Some(if suffix.as_os_str().is_empty() {
+        destination
+    } else {
+        destination.join(suffix)
+    }))
 }
 
 #[cfg(test)]
@@ -72,12 +78,11 @@ mod tests {
     }
     #[test]
     fn exact_root_maps() {
-        assert_eq!(
-            remap(Path::new("/a/p"), Path::new("/a/p/"), Path::new("/b/q"))
-                .unwrap()
-                .unwrap(),
-            Path::new("/b/q")
-        );
+        let mapped = remap(Path::new("/a/p"), Path::new("/a/p/"), Path::new("/b/q"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(mapped, Path::new("/b/q"));
+        assert_eq!(mapped.to_string_lossy(), "/b/q");
     }
     #[test]
     fn relative_paths_are_rejected() {

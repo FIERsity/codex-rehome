@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-alpha.2 - 2026-07-14
 
 - Narrowed process detection to state-writing ChatGPT/Codex processes so the independent Codex Computer Use helper no longer blocks migrations.
+- Removed the trailing slash introduced when remapping an exact project root and made process-inspection errors fail closed.
+- Made `verify` emit an explicit success summary with old-reference and destination-thread counts.
 
 ## 0.1.0-alpha.1 - 2026-07-14
 

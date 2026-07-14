@@ -1,6 +1,17 @@
 use crate::{discovery, plan::MigrationPlan};
 use anyhow::{Result, bail};
-use std::path::Path;
+use serde::Serialize;
+use std::path::{Path, PathBuf};
+
+#[derive(Serialize)]
+pub struct VerificationReport {
+    pub verified: bool,
+    pub old_root: Option<PathBuf>,
+    pub new_root: PathBuf,
+    pub old_references: usize,
+    pub destination_threads: usize,
+    pub discovery: discovery::Discovery,
+}
 pub fn migrated(plan: &MigrationPlan) -> Result<()> {
     let old_d = discovery::inspect(&plan.old_root)?;
     if !old_d.changes.is_empty() {
@@ -90,15 +101,25 @@ fn verify_change_counts(
     }
     Ok(())
 }
-pub fn report(root: &Path) -> Result<discovery::Discovery> {
-    discovery::inspect(root)
-}
-pub fn paths(old: &Path, new: &Path) -> Result<()> {
-    if !discovery::inspect(old)?.changes.is_empty() {
+pub fn report(new: &Path, old: Option<&Path>) -> Result<VerificationReport> {
+    let old_references = old
+        .map(discovery::inspect)
+        .transpose()?
+        .map(|result| result.changes.iter().map(|change| change.expected).sum())
+        .unwrap_or(0);
+    if old_references != 0 {
         bail!("structural references to old path remain")
     }
-    if discovery::inspect(new)?.threads.is_empty() {
+    let result = discovery::inspect(new)?;
+    if old.is_some() && result.threads.is_empty() {
         bail!("no destination threads found")
     }
-    Ok(())
+    Ok(VerificationReport {
+        verified: true,
+        old_root: old.map(Path::to_path_buf),
+        new_root: new.to_path_buf(),
+        old_references,
+        destination_threads: result.threads.len(),
+        discovery: result,
+    })
 }

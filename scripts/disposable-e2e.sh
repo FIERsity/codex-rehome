@@ -31,9 +31,9 @@ printf '%s\n' 'disposable project marker' >"$OLD/marker.txt"
 
 sqlite3 "$HOME_DIR/state_5.sqlite" <"$SCHEMA"
 sqlite3 "$HOME_DIR/state_5.sqlite" \
-  "INSERT INTO threads(id,rollout_path,created_at,updated_at,source,model_provider,cwd,title,sandbox_policy,approval_mode) VALUES('e2e-thread','$ROLLOUT',0,0,'cli','openai','$OLD/sub','synthetic','{}','never');"
+  "INSERT INTO threads(id,rollout_path,created_at,updated_at,source,model_provider,cwd,title,sandbox_policy,approval_mode) VALUES('e2e-thread','$ROLLOUT',0,0,'cli','openai','$OLD','synthetic','{}','never');"
 printf '%s\n' \
-  "{\"type\":\"session_meta\",\"payload\":{\"id\":\"e2e-thread\",\"cwd\":\"$OLD/sub\"}}" \
+  "{\"type\":\"session_meta\",\"payload\":{\"id\":\"e2e-thread\",\"cwd\":\"$OLD\"}}" \
   '{"type":"response_item","payload":{"content":"unrelated prose stays unchanged"}}' >"$ROLLOUT"
 printf '%s\n' \
   "{\"active-workspace-roots\":[\"$OLD\"],\"thread-workspace-root-hints\":{\"e2e-thread\":\"$OLD/sub\"}}" \
@@ -51,10 +51,10 @@ REMAP_OUTPUT=$(run remap "$OLD" "$NEW" --yes)
 REMAP_ID=$(printf '%s\n' "$REMAP_OUTPUT" | awk '/^migration / {print $2}')
 [ -n "$REMAP_ID" ] || fail "remap did not return a migration id"
 run verify "$NEW" --old "$OLD" >/dev/null
-[ "$(sqlite3 "$HOME_DIR/state_5.sqlite" "SELECT cwd FROM threads WHERE id='e2e-thread';")" = "$NEW/sub" ] \
+[ "$(sqlite3 "$HOME_DIR/state_5.sqlite" "SELECT cwd FROM threads WHERE id='e2e-thread';")" = "$NEW" ] \
   || fail "remap did not update SQLite cwd"
 run rollback "$REMAP_ID" --yes
-[ "$(sqlite3 "$HOME_DIR/state_5.sqlite" "SELECT cwd FROM threads WHERE id='e2e-thread';")" = "$OLD/sub" ] \
+[ "$(sqlite3 "$HOME_DIR/state_5.sqlite" "SELECT cwd FROM threads WHERE id='e2e-thread';")" = "$OLD" ] \
   || fail "remap rollback did not restore SQLite cwd"
 
 rmdir "$NEW"

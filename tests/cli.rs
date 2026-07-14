@@ -202,6 +202,26 @@ fn repeated_remap_is_idempotent() {
 }
 
 #[test]
+fn verify_reports_an_explicit_success_summary() {
+    let f = fixture();
+    run_remap(&f);
+    let output = command(&f)
+        .args([
+            "verify",
+            f.new.to_str().unwrap(),
+            "--old",
+            f.old.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["verified"], true);
+    assert_eq!(report["old_references"], 0);
+    assert_eq!(report["destination_threads"], 1);
+}
+
+#[test]
 fn backup_tampering_blocks_rollback() {
     let f = fixture();
     let id = run_remap(&f);
@@ -281,6 +301,27 @@ fn process_detection_refuses_writes() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("Codex appears to be running"));
+}
+
+#[test]
+fn process_inspection_error_fails_closed() {
+    let f = fixture();
+    let pgrep = f._temp.path().join("bin/pgrep");
+    fs::write(
+        &pgrep,
+        "#!/bin/sh\necho 'inspection unavailable' >&2\nexit 2\n",
+    )
+    .unwrap();
+    command(&f)
+        .args([
+            "remap",
+            f.old.to_str().unwrap(),
+            f.new.to_str().unwrap(),
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("process inspection failed"));
 }
 
 #[test]

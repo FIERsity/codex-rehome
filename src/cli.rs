@@ -104,12 +104,7 @@ pub fn run(cli: Cli) -> Result<()> {
         )?)?,
         CommandKind::Remap { old, new, yes } => execute(&old, &new, Operation::Remap, yes)?,
         CommandKind::Move { old, new, yes } => execute(&old, &new, Operation::Move, yes)?,
-        CommandKind::Verify { new, old } => {
-            if let Some(o) = old {
-                verify::paths(&o, &new)?
-            }
-            print_json(&verify::report(&new)?)?
-        }
+        CommandKind::Verify { new, old } => print_json(&verify::report(&new, old.as_deref())?)?,
         CommandKind::Rollback { migration_id, yes } => {
             require_yes(yes)?;
             ensure_stopped()?;
@@ -154,10 +149,10 @@ fn ensure_stopped() -> Result<()> {
     // unrelated helpers such as "Codex Computer Use.app".
     const WRITER_PATTERN: &str =
         "/Applications/(ChatGPT|Codex)\\.app/|codex .*app-server|codex (exec|resume)";
-    let out = Command::new("pgrep")
+    let o = Command::new("pgrep")
         .args(["-afil", WRITER_PATTERN])
-        .output();
-    let Ok(o) = out else { return Ok(()) };
+        .output()
+        .context("could not inspect running ChatGPT/Codex processes")?;
     if o.status.success() && !o.stdout.is_empty() {
         let matches = String::from_utf8_lossy(&o.stdout);
         bail!(
@@ -165,7 +160,13 @@ fn ensure_stopped() -> Result<()> {
             matches.trim()
         )
     }
-    Ok(())
+    if o.status.code() == Some(1) {
+        return Ok(());
+    }
+    bail!(
+        "process inspection failed; refusing mutation: {}",
+        String::from_utf8_lossy(&o.stderr).trim()
+    )
 }
 fn execute(old: &Path, new: &Path, op: Operation, yes: bool) -> Result<()> {
     require_yes(yes)?;
