@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
-    os::unix::fs::PermissionsExt,
+    os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
 };
 
@@ -49,6 +49,7 @@ pub fn create(home: &Path, plan: &crate::plan::MigrationPlan) -> Result<(PathBuf
     unique.sort();
     unique.dedup_by(|a, b| a.0 == b.0);
     for (src, store) in unique {
+        validate_source_file(&src)?;
         let name = format!(
             "{:04}-{}",
             files.len(),
@@ -83,6 +84,19 @@ pub fn create(home: &Path, plan: &crate::plan::MigrationPlan) -> Result<(PathBuf
             directory_moved: false,
         },
     ))
+}
+fn validate_source_file(path: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+        bail!(
+            "refusing non-regular or symlinked state file: {}",
+            path.display()
+        )
+    }
+    if metadata.nlink() != 1 {
+        bail!("refusing hard-linked state file: {}", path.display())
+    }
+    Ok(())
 }
 fn sqlite_snapshot(src: &Path, dst: &Path) -> Result<()> {
     let from = Connection::open_with_flags(src, OpenFlags::SQLITE_OPEN_READ_ONLY)?;

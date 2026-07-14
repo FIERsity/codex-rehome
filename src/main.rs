@@ -2,6 +2,7 @@ mod adapters;
 mod backup;
 mod cli;
 mod discovery;
+mod fault;
 mod path_map;
 mod plan;
 mod rollback;

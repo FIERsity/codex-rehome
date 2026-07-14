@@ -32,29 +32,39 @@ pub struct MigrationPlan {
     pub new_real: Option<PathBuf>,
     pub thread_ids: Vec<String>,
     pub changes: Vec<Change>,
+    pub destination_baseline: Vec<Change>,
     pub warnings: Vec<String>,
     pub state_schema_fingerprint: Option<String>,
 }
 
 impl MigrationPlan {
-    pub fn build(old: &Path, new: &Path, operation: Operation, d: &Discovery) -> Result<Self> {
+    pub fn build(
+        old: &Path,
+        new: &Path,
+        operation: Operation,
+        source: &Discovery,
+        destination: &Discovery,
+    ) -> Result<Self> {
         let mut plan = Self {
             format_version: 2,
             migration_id: String::new(),
             tool_version: env!("CARGO_PKG_VERSION").into(),
-            codex_version: d.codex_version.clone(),
+            codex_version: source.codex_version.clone(),
             operation,
             old_root: old.into(),
             new_root: new.into(),
             old_real: old.canonicalize().ok(),
             new_real: new.canonicalize().ok(),
-            thread_ids: d.threads.iter().map(|t| t.id.clone()).collect(),
-            changes: d.changes.clone(),
-            warnings: d.warnings.clone(),
-            state_schema_fingerprint: d.state_schema_fingerprint.clone(),
+            thread_ids: source.threads.iter().map(|t| t.id.clone()).collect(),
+            changes: source.changes.clone(),
+            destination_baseline: destination.changes.clone(),
+            warnings: source.warnings.clone(),
+            state_schema_fingerprint: source.state_schema_fingerprint.clone(),
         };
         plan.thread_ids.sort();
         plan.changes
+            .sort_by(|a, b| (&a.store, &a.file, &a.field).cmp(&(&b.store, &b.file, &b.field)));
+        plan.destination_baseline
             .sort_by(|a, b| (&a.store, &a.file, &a.field).cmp(&(&b.store, &b.file, &b.field)));
         let bytes = serde_json::to_vec(&plan)?;
         let mut hasher = Sha256::new();

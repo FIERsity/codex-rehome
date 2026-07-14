@@ -353,6 +353,200 @@ fn sqlite_snapshot_includes_committed_wal_rows() {
 }
 
 #[test]
+fn partially_migrated_state_preserves_destination_baseline() {
+    let f = fixture();
+    let db = Connection::open(f.home.join("state_5.sqlite")).unwrap();
+    db.execute(
+        "INSERT INTO threads(id,rollout_path,created_at,updated_at,source,model_provider,cwd,title,sandbox_policy,approval_mode) VALUES('already-new','/tmp/already.jsonl',0,0,'cli','openai',?1,'existing','{}','never')",
+        [f.new.join("existing").to_string_lossy()],
+    ).unwrap();
+    drop(db);
+    let id = run_remap(&f);
+    let db = Connection::open(f.home.join("state_5.sqlite")).unwrap();
+    let count: i64 = db
+        .query_row(
+            "SELECT count(*) FROM threads WHERE cwd LIKE ?1",
+            [format!("{}%", f.new.display())],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 2);
+    drop(db);
+    command(&f)
+        .args(["rollback", &id, "--yes"])
+        .assert()
+        .success();
+    let db = Connection::open(f.home.join("state_5.sqlite")).unwrap();
+    let old_count: i64 = db
+        .query_row(
+            "SELECT count(*) FROM threads WHERE cwd LIKE ?1",
+            [format!("{}%", f.old.display())],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let new_count: i64 = db
+        .query_row(
+            "SELECT count(*) FROM threads WHERE cwd LIKE ?1",
+            [format!("{}%", f.new.display())],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!((old_count, new_count), (1, 1));
+}
+
+#[test]
+fn injected_failure_after_sqlite_update_restores_every_store() {
+    let f = fixture();
+    let before_global = fs::read(f.home.join(".codex-global-state.json")).unwrap();
+    let before_rollout = fs::read(f.home.join("sessions/2026/07/14/rollout.jsonl")).unwrap();
+    command(&f)
+        .env("CODEX_REHOME_FAULT", "after_state_db")
+        .args([
+            "remap",
+            f.old.to_str().unwrap(),
+            f.new.to_str().unwrap(),
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("injected fault"));
+    let db = Connection::open(f.home.join("state_5.sqlite")).unwrap();
+    let cwd: String = db
+        .query_row(
+            "SELECT cwd FROM threads WHERE id='synthetic-thread'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(cwd, f.old.join("sub").to_string_lossy());
+    assert_eq!(
+        before_global,
+        fs::read(f.home.join(".codex-global-state.json")).unwrap()
+    );
+    assert_eq!(
+        before_rollout,
+        fs::read(f.home.join("sessions/2026/07/14/rollout.jsonl")).unwrap()
+    );
+}
+
+#[test]
+fn symlink_project_root_is_rejected() {
+    let f = fixture();
+    let link = f._temp.path().join("linked destination");
+    std::os::unix::fs::symlink(&f.new, &link).unwrap();
+    command(&f)
+        .args([
+            "remap",
+            f.old.to_str().unwrap(),
+            link.to_str().unwrap(),
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("symbolic link"));
+}
+
+#[test]
+fn hard_linked_state_file_is_rejected() {
+    let f = fixture();
+    fs::hard_link(
+        f.home.join(".codex-global-state.json"),
+        f.home.join("global-state-hardlink.json"),
+    )
+    .unwrap();
+    command(&f)
+        .args([
+            "remap",
+            f.old.to_str().unwrap(),
+            f.new.to_str().unwrap(),
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("hard-linked state file"));
+}
+
+#[test]
+fn injected_failure_after_move_restores_directory_and_state() {
+    let f = fixture();
+    fs::remove_dir(&f.new).unwrap();
+    command(&f)
+        .env("CODEX_REHOME_FAULT", "after_move")
+        .args([
+            "move",
+            f.old.to_str().unwrap(),
+            f.new.to_str().unwrap(),
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("injected fault"));
+    assert!(f.old.exists());
+    assert!(!f.new.exists());
+    let db = Connection::open(f.home.join("state_5.sqlite")).unwrap();
+    let cwd: String = db
+        .query_row(
+            "SELECT cwd FROM threads WHERE id='synthetic-thread'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(cwd, f.old.join("sub").to_string_lossy());
+}
+
+#[test]
+fn remap_succeeds_when_old_directory_is_already_missing() {
+    let f = fixture();
+    fs::remove_dir(&f.old).unwrap();
+    let id = run_remap(&f);
+    let db = Connection::open(f.home.join("state_5.sqlite")).unwrap();
+    let cwd: String = db
+        .query_row(
+            "SELECT cwd FROM threads WHERE id='synthetic-thread'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(cwd.starts_with(f.new.to_str().unwrap()));
+    drop(db);
+    command(&f)
+        .args(["rollback", &id, "--yes"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn move_refuses_an_existing_destination() {
+    let f = fixture();
+    command(&f)
+        .args([
+            "move",
+            f.old.to_str().unwrap(),
+            f.new.to_str().unwrap(),
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "existing source and absent target",
+        ));
+}
+
+#[test]
+fn migration_version_drift_fails_closed() {
+    let f = fixture();
+    let db = Connection::open(f.home.join("state_5.sqlite")).unwrap();
+    db.execute("DELETE FROM _sqlx_migrations WHERE version=40", [])
+        .unwrap();
+    drop(db);
+    command(&f)
+        .args(["inspect", f.old.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("expected successful migrations"));
+}
+
+#[test]
 fn unknown_schema_fails_closed() {
     let t = tempfile::tempdir().unwrap();
     let db = Connection::open(t.path().join("state_5.sqlite")).unwrap();

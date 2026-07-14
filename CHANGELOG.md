@@ -7,3 +7,6 @@
 - Locked mutation compatibility to the observed Codex 0.144.x SQLite schema and migrations 1–40.
 - Added WAL-consistent SQLite online backups, backup tamper detection, post-write hashes, rollback locking, and restore verification.
 - Added nested Desktop state traversal and a versioned, fully synthetic test fixture.
+- Added destination baselines for safe partially migrated workspaces.
+- Added debug-only interruption testing and automatic restoration checks after SQLite and directory-move faults.
+- Refused symbolic-link project roots and hard-linked state files during alpha writes.

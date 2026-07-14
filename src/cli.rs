@@ -96,7 +96,13 @@ fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {
 fn make_plan(old: &Path, new: &Path, op: Operation) -> Result<MigrationPlan> {
     let o = path_map::lexical_absolute(old)?;
     let n = path_map::lexical_absolute(new)?;
-    MigrationPlan::build(&o, &n, op, &discovery::inspect(&o)?)
+    MigrationPlan::build(
+        &o,
+        &n,
+        op,
+        &discovery::inspect(&o)?,
+        &discovery::inspect(&n)?,
+    )
 }
 fn require_yes(yes: bool) -> Result<()> {
     if !yes {
@@ -118,6 +124,8 @@ fn ensure_stopped() -> Result<()> {
 fn execute(old: &Path, new: &Path, op: Operation, yes: bool) -> Result<()> {
     require_yes(yes)?;
     ensure_stopped()?;
+    reject_symlink_root(old, "source")?;
+    reject_symlink_root(new, "destination")?;
     let plan = make_plan(old, new, op.clone())?;
     if plan.changes.is_empty() {
         bail!("nothing to migrate")
@@ -146,8 +154,10 @@ fn execute(old: &Path, new: &Path, op: Operation, yes: bool) -> Result<()> {
             )?;
             manifest.directory_moved = true;
             backup::write_manifest(&dir, &manifest)?;
+            crate::fault::check("after_move")?;
         }
         mutate(&plan)?;
+        crate::fault::check("before_verify")?;
         verify::migrated(&plan)?;
         backup::record_after_hashes(&mut manifest)?;
         manifest.status = "complete".into();
@@ -169,6 +179,15 @@ fn execute(old: &Path, new: &Path, op: Operation, yes: bool) -> Result<()> {
     );
     Ok(())
 }
+fn reject_symlink_root(path: &Path, label: &str) -> Result<()> {
+    if path.exists() && fs::symlink_metadata(path)?.file_type().is_symlink() {
+        bail!(
+            "refusing {label} project root that is a symbolic link: {}",
+            path.display()
+        )
+    }
+    Ok(())
+}
 fn mutate(plan: &MigrationPlan) -> Result<()> {
     for c in &plan.changes {
         match c.store.as_str() {
@@ -177,6 +196,7 @@ fn mutate(plan: &MigrationPlan) -> Result<()> {
             "desktop_state" => mutate_global(&c.file, &plan.old_root, &plan.new_root)?,
             _ => bail!("unknown adapter"),
         }
+        crate::fault::check(&format!("after_{}", c.store))?;
     }
     Ok(())
 }
