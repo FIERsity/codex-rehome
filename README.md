@@ -51,6 +51,7 @@ cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all
 cargo build --release
+scripts/disposable-e2e.sh
 ```
 
 All mutation tests must set `CODEX_HOME` to a temporary, synthetic fixture. Never test writes against a real `~/.codex`.
