@@ -23,6 +23,6 @@ pub fn run(home: &Path, id: &str) -> Result<()> {
     }
     crate::verify::restored(&m.plan)?;
     m.status = "rolled-back".into();
-    backup::write_manifest(&dir, &m)?;
+    backup::write_manifest_stage(&dir, &m, Some("rolledback_manifest"))?;
     Ok(())
 }

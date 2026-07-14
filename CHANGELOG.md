@@ -10,3 +10,5 @@
 - Added destination baselines for safe partially migrated workspaces.
 - Added debug-only interruption testing and automatic restoration checks after SQLite and directory-move faults.
 - Refused symbolic-link project roots and hard-linked state files during alpha writes.
+- Added fsync-backed atomic rollout/Desktop/manifest replacement and retryable rollback interruption tests.
+- Added cross-filesystem move preflight and explicit `failed-rollback-error` manifests when automatic recovery itself fails.

@@ -547,6 +547,170 @@ fn migration_version_drift_fails_closed() {
 }
 
 #[test]
+fn rollout_atomic_replace_fault_restores_all_state() {
+    let f = fixture();
+    let before_global = fs::read(f.home.join(".codex-global-state.json")).unwrap();
+    let before_rollout = fs::read(f.home.join("sessions/2026/07/14/rollout.jsonl")).unwrap();
+    command(&f)
+        .env("CODEX_REHOME_FAULT", "after_rollout_persist")
+        .args([
+            "remap",
+            f.old.to_str().unwrap(),
+            f.new.to_str().unwrap(),
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("injected fault"));
+    let db = Connection::open(f.home.join("state_5.sqlite")).unwrap();
+    let cwd: String = db
+        .query_row(
+            "SELECT cwd FROM threads WHERE id='synthetic-thread'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(cwd, f.old.join("sub").to_string_lossy());
+    assert_eq!(
+        before_global,
+        fs::read(f.home.join(".codex-global-state.json")).unwrap()
+    );
+    assert_eq!(
+        before_rollout,
+        fs::read(f.home.join("sessions/2026/07/14/rollout.jsonl")).unwrap()
+    );
+}
+
+#[test]
+fn prepared_manifest_fault_leaves_no_orphan_backup() {
+    let f = fixture();
+    command(&f)
+        .env("CODEX_REHOME_FAULT", "before_prepared_manifest_persist")
+        .args([
+            "remap",
+            f.old.to_str().unwrap(),
+            f.new.to_str().unwrap(),
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("injected fault"));
+    let backup_root = f.home.join("rehome-backups");
+    assert_eq!(fs::read_dir(backup_root).unwrap().count(), 0);
+}
+
+#[test]
+fn complete_manifest_fault_rolls_back_and_records_failure() {
+    let f = fixture();
+    command(&f)
+        .env("CODEX_REHOME_FAULT", "before_complete_manifest_persist")
+        .args([
+            "remap",
+            f.old.to_str().unwrap(),
+            f.new.to_str().unwrap(),
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("injected fault"));
+    let dir = fs::read_dir(f.home.join("rehome-backups"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(dir.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["status"], "failed-rolled-back");
+    let db = Connection::open(f.home.join("state_5.sqlite")).unwrap();
+    let cwd: String = db
+        .query_row(
+            "SELECT cwd FROM threads WHERE id='synthetic-thread'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(cwd, f.old.join("sub").to_string_lossy());
+}
+
+#[test]
+fn interrupted_rollback_can_be_retried() {
+    let f = fixture();
+    let id = run_remap(&f);
+    command(&f)
+        .env("CODEX_REHOME_FAULT", "after_restore_file_0")
+        .args(["rollback", &id, "--yes"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("injected fault"));
+    command(&f)
+        .args(["rollback", &id, "--yes"])
+        .assert()
+        .success();
+    let db = Connection::open(f.home.join("state_5.sqlite")).unwrap();
+    let cwd: String = db
+        .query_row(
+            "SELECT cwd FROM threads WHERE id='synthetic-thread'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(cwd, f.old.join("sub").to_string_lossy());
+}
+
+#[test]
+fn rollback_manifest_interruption_is_idempotent() {
+    let f = fixture();
+    let id = run_remap(&f);
+    command(&f)
+        .env("CODEX_REHOME_FAULT", "before_rolledback_manifest_persist")
+        .args(["rollback", &id, "--yes"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("injected fault"));
+    command(&f)
+        .args(["rollback", &id, "--yes"])
+        .assert()
+        .success();
+    let manifest: Value = serde_json::from_slice(
+        &fs::read(
+            f.home
+                .join("rehome-backups")
+                .join(&id)
+                .join("manifest.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(manifest["status"], "rolled-back");
+}
+
+#[test]
+fn automatic_recovery_failure_is_never_reported_as_rolled_back() {
+    let f = fixture();
+    command(&f)
+        .env("CODEX_REHOME_FAULT", "after_state_db,after_restore_file_0")
+        .args([
+            "remap",
+            f.old.to_str().unwrap(),
+            f.new.to_str().unwrap(),
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("automatic recovery also failed"));
+    let dir = fs::read_dir(f.home.join("rehome-backups"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(dir.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["status"], "failed-rollback-error");
+}
+
+#[test]
 fn unknown_schema_fails_closed() {
     let t = tempfile::tempdir().unwrap();
     let db = Connection::open(t.path().join("state_5.sqlite")).unwrap();

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
+    io::Write,
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
 };
@@ -111,15 +112,31 @@ fn sqlite_snapshot(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 pub fn write_manifest(dir: &Path, m: &Manifest) -> Result<()> {
+    write_manifest_stage(dir, m, None)
+}
+pub fn write_manifest_stage(dir: &Path, m: &Manifest, stage: Option<&str>) -> Result<()> {
     let p = dir.join("manifest.json");
     let tmp = dir.join(".manifest.tmp");
-    fs::write(&tmp, serde_json::to_vec_pretty(m)?)?;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&tmp)?;
+    file.write_all(&serde_json::to_vec_pretty(m)?)?;
     fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))?;
+    file.sync_all()?;
+    if let Some(stage) = stage {
+        crate::fault::check(&format!("before_{stage}_persist"))?;
+    }
     fs::rename(tmp, p)?;
+    sync_directory(dir)?;
+    if let Some(stage) = stage {
+        crate::fault::check(&format!("after_{stage}_persist"))?;
+    }
     Ok(())
 }
 pub fn restore(m: &Manifest) -> Result<()> {
-    for f in &m.files {
+    for (index, f) in m.files.iter().enumerate() {
         if sha(&f.backup)? != f.before_sha256 {
             bail!("backup was modified: {}", f.backup.display())
         }
@@ -130,7 +147,12 @@ pub fn restore(m: &Manifest) -> Result<()> {
         if sha(&f.original)? != f.before_sha256 {
             bail!("restore checksum mismatch: {}", f.original.display())
         }
+        crate::fault::check(&format!("after_restore_file_{index}"))?;
     }
+    Ok(())
+}
+pub fn sync_directory(path: &Path) -> Result<()> {
+    fs::File::open(path)?.sync_all()?;
     Ok(())
 }
 pub fn record_after_hashes(m: &mut Manifest) -> Result<()> {

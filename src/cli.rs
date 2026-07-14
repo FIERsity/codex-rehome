@@ -11,6 +11,7 @@ use serde_json::Value;
 use std::{
     fs::{self, File, OpenOptions},
     io::{BufRead, BufReader, Write},
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -135,6 +136,9 @@ fn execute(old: &Path, new: &Path, op: Operation, yes: bool) -> Result<()> {
     if op == Operation::Move && (!old.exists() || new.exists()) {
         bail!("move requires existing source and absent target")
     }
+    if op == Operation::Move {
+        ensure_move_preflight(old, new)?;
+    }
     let home = discovery::codex_home();
     let lock_path = home.join("codex-rehome.lock");
     let lock = OpenOptions::new()
@@ -145,14 +149,17 @@ fn execute(old: &Path, new: &Path, op: Operation, yes: bool) -> Result<()> {
     lock.try_lock_exclusive()
         .context("another migration holds the lock")?;
     let (dir, mut manifest) = backup::create(&home, &plan)?;
-    backup::write_manifest(&dir, &manifest)?;
+    if let Err(error) = backup::write_manifest_stage(&dir, &manifest, Some("prepared_manifest")) {
+        let _ = fs::remove_dir_all(&dir);
+        return Err(error);
+    }
     let result = (|| -> Result<()> {
         if op == Operation::Move {
             fs::rename(old, new).context(
                 "atomic directory move failed (cross-filesystem moves are not supported in v0.1)",
             )?;
             manifest.directory_moved = true;
-            backup::write_manifest(&dir, &manifest)?;
+            backup::write_manifest_stage(&dir, &manifest, Some("moved_manifest"))?;
             crate::fault::check("after_move")?;
         }
         mutate(&plan)?;
@@ -160,16 +167,39 @@ fn execute(old: &Path, new: &Path, op: Operation, yes: bool) -> Result<()> {
         verify::migrated(&plan)?;
         backup::record_after_hashes(&mut manifest)?;
         manifest.status = "complete".into();
-        backup::write_manifest(&dir, &manifest)?;
+        backup::write_manifest_stage(&dir, &manifest, Some("complete_manifest"))?;
         Ok(())
     })();
     if let Err(e) = result {
-        let _ = backup::restore(&manifest);
-        if manifest.directory_moved && !old.exists() && new.exists() {
-            let _ = fs::rename(new, old);
+        let mut recovery_errors = Vec::new();
+        if let Err(error) = backup::restore(&manifest) {
+            recovery_errors.push(format!("state restore: {error:#}"));
         }
-        manifest.status = "failed-rolled-back".into();
+        if manifest.directory_moved && !old.exists() && new.exists() {
+            if let Err(error) = fs::rename(new, old) {
+                recovery_errors.push(format!("directory restore: {error}"));
+            }
+        }
+        if recovery_errors.is_empty() {
+            recovery_errors.extend(
+                verify::restored(&plan)
+                    .err()
+                    .map(|error| format!("restore verification: {error:#}")),
+            );
+        }
+        manifest.status = if recovery_errors.is_empty() {
+            "failed-rolled-back"
+        } else {
+            "failed-rollback-error"
+        }
+        .into();
         let _ = backup::write_manifest(&dir, &manifest);
+        if !recovery_errors.is_empty() {
+            bail!(
+                "migration failed: {e:#}; automatic recovery also failed: {}",
+                recovery_errors.join("; ")
+            )
+        }
         return Err(e);
     }
     println!(
@@ -184,6 +214,25 @@ fn reject_symlink_root(path: &Path, label: &str) -> Result<()> {
             "refusing {label} project root that is a symbolic link: {}",
             path.display()
         )
+    }
+    Ok(())
+}
+fn ensure_move_preflight(old: &Path, new: &Path) -> Result<()> {
+    let source = fs::metadata(old)?;
+    if !source.is_dir() {
+        bail!("move source is not a directory: {}", old.display())
+    }
+    let mut destination_parent = new.parent().context("move destination has no parent")?;
+    while !destination_parent.exists() {
+        destination_parent = destination_parent
+            .parent()
+            .context("move destination has no existing ancestor")?;
+    }
+    ensure_same_device(source.dev(), fs::metadata(destination_parent)?.dev())
+}
+fn ensure_same_device(source_device: u64, destination_device: u64) -> Result<()> {
+    if source_device != destination_device {
+        bail!("cross-filesystem moves are not supported; use a manual move followed by remap")
     }
     Ok(())
 }
@@ -228,16 +277,23 @@ fn mutate_jsonl(path: &Path, old: &Path, new: &Path) -> Result<()> {
         tmp.write_all(b"\n")?
     }
     tmp.as_file().sync_all()?;
+    crate::fault::check("before_rollout_persist")?;
     tmp.persist(path)?;
+    backup::sync_directory(parent)?;
+    crate::fault::check("after_rollout_persist")?;
     Ok(())
 }
 fn mutate_global(path: &Path, old: &Path, new: &Path) -> Result<()> {
     let mut v: Value = serde_json::from_slice(&fs::read(path)?)?;
     adapters::desktop_state::rewrite(&mut v, old, new, false)?;
-    let mut tmp = tempfile::NamedTempFile::new_in(path.parent().unwrap())?;
+    let parent = path.parent().unwrap();
+    let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
     serde_json::to_writer_pretty(&mut tmp, &v)?;
     tmp.as_file().sync_all()?;
+    crate::fault::check("before_desktop_persist")?;
     tmp.persist(path)?;
+    backup::sync_directory(parent)?;
+    crate::fault::check("after_desktop_persist")?;
     Ok(())
 }
 fn doctor() -> Result<()> {
@@ -256,4 +312,22 @@ fn doctor() -> Result<()> {
     print_json(
         &serde_json::json!({"codex_home":home,"compatible":issues.is_empty(),"issues":issues}),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn equal_devices_are_accepted() {
+        ensure_same_device(7, 7).unwrap();
+    }
+    #[test]
+    fn different_devices_are_rejected() {
+        assert!(
+            ensure_same_device(7, 8)
+                .unwrap_err()
+                .to_string()
+                .contains("cross-filesystem")
+        );
+    }
 }
