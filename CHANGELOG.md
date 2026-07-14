@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Narrowed process detection to state-writing ChatGPT/Codex processes so the independent Codex Computer Use helper no longer blocks migrations.
+
 ## 0.1.0-alpha.1 - 2026-07-14
 
 - Initial defensive macOS CLI with inspect, plan, remap, move, verify, rollback, and doctor.

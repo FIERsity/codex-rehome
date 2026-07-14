@@ -150,12 +150,20 @@ fn require_yes(yes: bool) -> Result<()> {
     Ok(())
 }
 fn ensure_stopped() -> Result<()> {
+    // Match the Desktop application and Codex state-writing CLI modes, but not
+    // unrelated helpers such as "Codex Computer Use.app".
+    const WRITER_PATTERN: &str =
+        "/Applications/(ChatGPT|Codex)\\.app/|codex .*app-server|codex (exec|resume)";
     let out = Command::new("pgrep")
-        .args(["-afil", "Codex|codex app-server|codex exec|codex resume"])
+        .args(["-afil", WRITER_PATTERN])
         .output();
     let Ok(o) = out else { return Ok(()) };
     if o.status.success() && !o.stdout.is_empty() {
-        bail!("Codex appears to be running; close Codex Desktop and CLI before writing")
+        let matches = String::from_utf8_lossy(&o.stdout);
+        bail!(
+            "ChatGPT/Codex appears to be running; close Desktop and state-writing CLI processes before writing:\n{}",
+            matches.trim()
+        )
     }
     Ok(())
 }
