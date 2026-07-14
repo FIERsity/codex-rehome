@@ -114,10 +114,9 @@ fn ensure_stopped() -> Result<()> {
     let out = Command::new("pgrep")
         .args(["-afil", "Codex|codex app-server|codex exec|codex resume"])
         .output();
-    if let Ok(o) = out {
-        if o.status.success() && !o.stdout.is_empty() {
-            bail!("Codex appears to be running; close Codex Desktop and CLI before writing")
-        }
+    let Ok(o) = out else { return Ok(()) };
+    if o.status.success() && !o.stdout.is_empty() {
+        bail!("Codex appears to be running; close Codex Desktop and CLI before writing")
     }
     Ok(())
 }

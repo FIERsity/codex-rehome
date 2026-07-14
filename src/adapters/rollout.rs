@@ -48,10 +48,9 @@ fn count_paths(v: &Value, root: &Path) -> Result<usize> {
     if let Value::Object(map) = v {
         for (k, x) in map {
             if PATH_FIELDS.contains(&k.as_str()) {
-                if let Some(s) = x.as_str() {
-                    if Path::new(s).is_absolute() && belongs_to(Path::new(s), root)? {
-                        n += 1
-                    }
+                let Some(s) = x.as_str() else { continue };
+                if Path::new(s).is_absolute() && belongs_to(Path::new(s), root)? {
+                    n += 1
                 }
             } else if k == "payload" {
                 n += count_paths(x, root)?;
@@ -65,11 +64,10 @@ pub(crate) fn rewrite(v: &mut Value, old: &Path, new: &Path) -> Result<usize> {
     if let Value::Object(map) = v {
         for (k, x) in map {
             if PATH_FIELDS.contains(&k.as_str()) {
-                if let Some(s) = x.as_str() {
-                    if let Some(p) = crate::path_map::remap(Path::new(s), old, new)? {
-                        *x = Value::String(p.to_string_lossy().into());
-                        n += 1
-                    }
+                let Some(s) = x.as_str() else { continue };
+                if let Some(p) = crate::path_map::remap(Path::new(s), old, new)? {
+                    *x = Value::String(p.to_string_lossy().into());
+                    n += 1
                 }
             } else if k == "payload" {
                 n += rewrite(x, old, new)?

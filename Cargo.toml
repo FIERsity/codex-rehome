@@ -2,6 +2,7 @@
 name = "codex-rehome"
 version = "0.1.0-alpha.1"
 edition = "2024"
+rust-version = "1.85"
 license = "Apache-2.0"
 description = "Safely inspect, plan, remap, move, verify, and roll back local Codex workspaces"
 repository = "https://github.com/FIERsity/codex-rehome"

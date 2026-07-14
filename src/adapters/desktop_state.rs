@@ -43,11 +43,12 @@ pub(crate) fn rewrite(v: &mut Value, old: &Path, new: &Path, active: bool) -> Re
     let mut n = 0;
     match v {
         Value::String(s) if active => {
-            if Path::new(s).is_absolute() {
-                if let Some(p) = crate::path_map::remap(Path::new(s), old, new)? {
-                    *s = p.to_string_lossy().into();
-                    n = 1
-                }
+            if !Path::new(s).is_absolute() {
+                return Ok(0);
+            }
+            if let Some(p) = crate::path_map::remap(Path::new(s), old, new)? {
+                *s = p.to_string_lossy().into();
+                n = 1
             }
         }
         Value::Array(a) => {
