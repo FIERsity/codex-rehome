@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-alpha.1 - Unreleased
+## 0.1.0-alpha.1 - 2026-07-14
 
 - Initial defensive macOS CLI with inspect, plan, remap, move, verify, rollback, and doctor.
 - Added deterministic plan IDs and unique UUID execution IDs.
@@ -15,3 +15,4 @@
 - Separated read-only schema discovery from the exact mutation gate and added a content-free `doctor` compatibility report.
 - Added a version/platform compatibility matrix and future-schema read-only diagnostics.
 - Added a release-binary disposable end-to-end exercise for remap, move, verification, and rollback on macOS and Linux CI.
+- Added generated shell completions, a man page, checksum-verifying installation, and a three-platform prerelease workflow.

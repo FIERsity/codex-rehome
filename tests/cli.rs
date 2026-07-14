@@ -108,6 +108,21 @@ fn inspect_is_read_only() {
 }
 
 #[test]
+fn generates_completion_and_manpage_assets() {
+    let f = fixture();
+    command(&f)
+        .args(["completions", "zsh"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("#compdef codex-rehome"));
+    command(&f)
+        .arg("manpage")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(".TH codex-rehome"));
+}
+
+#[test]
 fn plan_is_deterministic_and_finds_nested_desktop_paths() {
     let f = fixture();
     let first = command(&f)

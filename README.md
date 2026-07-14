@@ -12,6 +12,23 @@ Version 0.1.0-alpha.1 targets macOS and the locally observed Codex CLI 0.144.x s
 
 It does **not** migrate Python, R, Node, Conda or other environments; cloud tasks; data between machines; Git remotes; or conversation exports. It never creates a permanent compatibility symlink.
 
+## Installation
+
+Download a checksum-verified release archive and install under `~/.local`:
+
+```console
+curl --fail --location --proto '=https' --tlsv1.2 \
+  --output /tmp/codex-rehome-install.sh \
+  https://raw.githubusercontent.com/FIERsity/codex-rehome/v0.1.0-alpha.1/scripts/install.sh
+sh /tmp/codex-rehome-install.sh
+```
+
+The installer supports macOS arm64/x86_64 and Linux x86_64. Override the destination with `CODEX_REHOME_PREFIX`; inspect the script before running it. Rust users can instead build from the pinned tag:
+
+```console
+cargo install --locked --git https://github.com/FIERsity/codex-rehome --tag v0.1.0-alpha.1
+```
+
 ## Commands
 
 - `inspect OLD`: read-only inventory of structurally associated threads and stores.
@@ -21,6 +38,8 @@ It does **not** migrate Python, R, Node, Conda or other environments; cloud task
 - `verify NEW --old OLD`: find structural old-path residue and confirm migrated threads.
 - `rollback ID`: restore backed-up state and, when conflict-free, the directory.
 - `doctor`: check the database schema and integrity.
+- `completions SHELL`: write a Bash, Elvish, Fish, PowerShell, or Zsh completion script.
+- `manpage`: write a roff man page.
 
 All mutation commands are dry-run by default: they refuse to write without `--yes`. Close Codex Desktop and every Codex CLI before a write because live processes may overwrite files or hold SQLite WAL state.
 
@@ -41,6 +60,8 @@ Backups live under `$CODEX_HOME/rehome-backups/<migration-id>` with mode 0700 an
 Codex Rehome 用于项目目录移动或改名后，安全检查、规划、重映射、移动、验证并回滚 Codex Desktop/CLI 的本地路径关联。它只处理 Codex 本地状态，不迁移语言环境、依赖、云任务、Git remote 或跨机器数据，也不会自动创建永久符号链接。
 
 `0.1.0-alpha.1` 针对 macOS 与已验证的 Codex CLI 0.144.x 内部状态（SQLite migration 1–40），仍是预发布版本，只应用于合成或可丢弃项目。内部格式并非公开 API，Codex 更新后工具可能为安全起见拒绝写入。所有写命令默认只演练，必须关闭 Codex 并显式加 `--yes`。备份位于 `$CODEX_HOME/rehome-backups`，可能包含敏感对话，权限设为 0700/0600。失败会自动恢复；也可在关闭 Codex 后运行 `codex-rehome rollback <migration-id> --yes`。
+
+正式发行包提供 macOS arm64/x86_64 与 Linux x86_64 二进制、SHA-256 校验、Shell 补全和 man page。默认安装到 `~/.local`；安装前应先查看 `scripts/install.sh`。
 
 本项目是独立社区项目，与 OpenAI 无隶属关系，也未获 OpenAI 背书。
 

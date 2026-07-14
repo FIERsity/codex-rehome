@@ -6,11 +6,16 @@ rust-version = "1.85"
 license = "Apache-2.0"
 description = "Safely inspect, plan, remap, move, verify, and roll back local Codex workspaces"
 repository = "https://github.com/FIERsity/codex-rehome"
+readme = "README.md"
+keywords = ["codex", "cli", "migration", "workspace"]
+categories = ["command-line-utilities", "filesystem"]
 
 [dependencies]
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+clap_mangen = "0.2"
 fs2 = "0.4"
 hex = "0.4"
 rusqlite = { version = "0.38", features = ["bundled", "backup"] }

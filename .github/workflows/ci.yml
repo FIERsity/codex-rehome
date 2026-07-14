@@ -22,3 +22,4 @@ jobs:
       - run: cargo test --all
       - run: cargo build --release
       - run: scripts/disposable-e2e.sh
+      - run: scripts/package-release.sh

@@ -4,7 +4,8 @@ use crate::{
     rollback, verify,
 };
 use anyhow::{Context, Result, bail};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::Shell;
 use fs2::FileExt;
 use rusqlite::params;
 use serde_json::Value;
@@ -56,6 +57,34 @@ enum CommandKind {
         yes: bool,
     },
     Doctor,
+    /// Generate a shell completion script on standard output.
+    Completions {
+        #[arg(value_enum)]
+        shell: CompletionShell,
+    },
+    /// Generate the roff manual page on standard output.
+    Manpage,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum CompletionShell {
+    Bash,
+    Elvish,
+    Fish,
+    PowerShell,
+    Zsh,
+}
+
+impl From<CompletionShell> for Shell {
+    fn from(shell: CompletionShell) -> Self {
+        match shell {
+            CompletionShell::Bash => Self::Bash,
+            CompletionShell::Elvish => Self::Elvish,
+            CompletionShell::Fish => Self::Fish,
+            CompletionShell::PowerShell => Self::PowerShell,
+            CompletionShell::Zsh => Self::Zsh,
+        }
+    }
 }
 pub fn run(cli: Cli) -> Result<()> {
     match cli.command {
@@ -87,6 +116,15 @@ pub fn run(cli: Cli) -> Result<()> {
             rollback::run(&discovery::codex_home(), &migration_id)?
         }
         CommandKind::Doctor => doctor()?,
+        CommandKind::Completions { shell } => {
+            let mut command = Cli::command();
+            let mut stdout = std::io::stdout();
+            let shell: Shell = shell.into();
+            clap_complete::generate(shell, &mut command, "codex-rehome", &mut stdout);
+        }
+        CommandKind::Manpage => {
+            clap_mangen::Man::new(Cli::command()).render(&mut std::io::stdout())?;
+        }
     }
     Ok(())
 }
