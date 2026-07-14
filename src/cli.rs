@@ -127,6 +127,9 @@ fn execute(old: &Path, new: &Path, op: Operation, yes: bool) -> Result<()> {
     reject_symlink_root(old, "source")?;
     reject_symlink_root(new, "destination")?;
     let plan = make_plan(old, new, op.clone())?;
+    if plan.state_write_compatible != Some(true) {
+        bail!("detected Codex state schema is read-only discoverable but not approved for mutation")
+    }
     if plan.changes.is_empty() {
         bail!("nothing to migrate")
     };
@@ -300,18 +303,40 @@ fn doctor() -> Result<()> {
     let home = discovery::codex_home();
     let db = home.join("state_5.sqlite");
     let mut issues = vec![];
+    let mut schema = None;
+    let mut integrity = None;
     if db.exists() {
-        let c = adapters::state_db::open_checked_read_only(&db)?;
+        let (c, report) = adapters::state_db::open_for_discovery(&db)?;
         let ok: String = c.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
+        integrity = Some(ok.clone());
         if ok != "ok" {
             issues.push(ok)
         }
+        issues.extend(report.incompatibilities.iter().cloned());
+        schema = Some(report);
     } else {
         issues.push("state_5.sqlite missing".into())
     }
-    print_json(
-        &serde_json::json!({"codex_home":home,"compatible":issues.is_empty(),"issues":issues}),
-    )
+    print_json(&serde_json::json!({
+        "report_version": 1,
+        "tool_version": env!("CARGO_PKG_VERSION"),
+        "platform": std::env::consts::OS,
+        "architecture": std::env::consts::ARCH,
+        "codex_home": home,
+        "codex_version": discovery::codex_version(),
+        "adapter_id": adapters::state_db::ADAPTER_ID,
+        "write_compatible": issues.is_empty(),
+        "sqlite_integrity": integrity,
+        "state_schema": schema,
+        "stores": {
+            "state_db": db.exists(),
+            "session_index": home.join("session_index.jsonl").exists(),
+            "desktop_global_state": home.join(".codex-global-state.json").exists(),
+            "sessions": home.join("sessions").is_dir(),
+            "archived_sessions": home.join("archived_sessions").is_dir()
+        },
+        "issues": issues
+    }))
 }
 
 #[cfg(test)]

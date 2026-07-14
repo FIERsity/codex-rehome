@@ -8,6 +8,8 @@ Codex Rehome is a defensive CLI for inspecting, planning, remapping, moving, ver
 
 Version 0.1.0-alpha.1 targets macOS and the locally observed Codex CLI 0.144.x state shape (SQLite migrations 1–40). It is a prerelease: use synthetic or disposable projects only. It uses undocumented internal formats and deliberately refuses unknown SQLite schemas or malformed JSONL. A Codex update may therefore make it refuse to write until its adapter is reviewed. Linux is exercised in CI for portability; Windows/WSL path forms are documented but not yet supported.
 
+`inspect` and `doctor` may read a newer schema when the minimal discovery columns remain available, but write compatibility is a separate exact gate. See the [compatibility matrix](docs/compatibility-matrix.md).
+
 It does **not** migrate Python, R, Node, Conda or other environments; cloud tasks; data between machines; Git remotes; or conversation exports. It never creates a permanent compatibility symlink.
 
 ## Commands

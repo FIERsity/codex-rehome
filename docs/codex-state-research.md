@@ -15,6 +15,8 @@ The official repository is the source of the CLI/state runtime. Source and issue
 On macOS with `codex-cli 0.144.2`, a read-only inspection found:
 
 - `~/.codex/state_5.sqlite`, with a `threads` table containing `id`, `cwd`, and `rollout_path` (174 rows at inspection time);
+- 32 `threads` columns and 40 successful SQLx migrations through version 40, summarized by adapter `codex-state-0.144-v40` with schema fingerprint `sha256:53f750bfe013ff30dab78182c2a3cb6215a5aefdbe3703bd495adcf99f8e099a`;
+- `PRAGMA integrity_check` returned `ok`; the content-free `doctor` report marked the schema write-compatible for this alpha adapter;
 - `session_index.jsonl`, whose observed index keys were `id`, `thread_name`, and `updated_at`;
 - rollout JSONL records whose structured `session_meta.payload` includes `cwd`, and later `turn_context` records;
 - `.codex-global-state.json` keys including active/saved workspace roots, project order, thread workspace-root hints, and writable roots.

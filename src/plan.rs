@@ -35,6 +35,7 @@ pub struct MigrationPlan {
     pub destination_baseline: Vec<Change>,
     pub warnings: Vec<String>,
     pub state_schema_fingerprint: Option<String>,
+    pub state_write_compatible: Option<bool>,
 }
 
 impl MigrationPlan {
@@ -60,6 +61,7 @@ impl MigrationPlan {
             destination_baseline: destination.changes.clone(),
             warnings: source.warnings.clone(),
             state_schema_fingerprint: source.state_schema_fingerprint.clone(),
+            state_write_compatible: source.state_write_compatible,
         };
         plan.thread_ids.sort();
         plan.changes

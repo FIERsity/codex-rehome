@@ -542,8 +542,55 @@ fn migration_version_drift_fails_closed() {
     command(&f)
         .args(["inspect", f.old.to_str().unwrap()])
         .assert()
+        .success()
+        .stdout(predicate::str::contains("read-only schema warning"));
+    command(&f)
+        .args([
+            "remap",
+            f.old.to_str().unwrap(),
+            f.new.to_str().unwrap(),
+            "--yes",
+        ])
+        .assert()
         .failure()
-        .stderr(predicate::str::contains("expected successful migrations"));
+        .stderr(predicate::str::contains("not approved for mutation"));
+}
+
+#[test]
+fn doctor_reports_supported_schema_without_task_content() {
+    let f = fixture();
+    let output = command(&f).arg("doctor").output().unwrap();
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["report_version"], 1);
+    assert_eq!(report["write_compatible"], true);
+    assert_eq!(report["state_schema"]["migration_max"], 40);
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(!text.contains("synthetic-thread"));
+    assert!(!text.contains("do not alter this path"));
+}
+
+#[test]
+fn doctor_reports_future_schema_as_read_only() {
+    let f = fixture();
+    let db = Connection::open(f.home.join("state_5.sqlite")).unwrap();
+    db.execute(
+        "INSERT INTO _sqlx_migrations(version,description,success,checksum,execution_time) VALUES(41,'future',1,zeroblob(48),0)",
+        [],
+    ).unwrap();
+    drop(db);
+    let output = command(&f).arg("doctor").output().unwrap();
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["write_compatible"], false);
+    assert_eq!(report["state_schema"]["migration_max"], 41);
+    assert!(
+        report["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| issue.as_str().unwrap().contains("expected 40"))
+    );
 }
 
 #[test]
