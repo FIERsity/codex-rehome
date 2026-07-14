@@ -1,5 +1,15 @@
 # Codex Rehome
 
+[![Release](https://img.shields.io/github/v/release/FIERsity/codex-rehome?include_prereleases&sort=semver&label=release)](https://github.com/FIERsity/codex-rehome/releases)
+[![License](https://img.shields.io/github/license/FIERsity/codex-rehome)](LICENSE)
+
+[![Download macOS Apple Silicon](https://img.shields.io/badge/download-macOS_Apple_Silicon-000000?logo=apple)](https://github.com/FIERsity/codex-rehome/releases/download/v0.1.0-alpha.2/codex-rehome-0.1.0-alpha.2-aarch64-apple-darwin.tar.gz)
+[![Download macOS Intel](https://img.shields.io/badge/download-macOS_Intel-555555?logo=apple)](https://github.com/FIERsity/codex-rehome/releases/download/v0.1.0-alpha.2/codex-rehome-0.1.0-alpha.2-x86_64-apple-darwin.tar.gz)
+[![Download Linux x86_64](https://img.shields.io/badge/download-Linux_x86__64-FCC624?logo=linux&logoColor=black)](https://github.com/FIERsity/codex-rehome/releases/download/v0.1.0-alpha.2/codex-rehome-0.1.0-alpha.2-x86_64-unknown-linux-gnu.tar.gz)
+
+[![Install script](https://img.shields.io/badge/install-checksum--verified_script-4EAA25?logo=gnubash&logoColor=white)](#installation)
+[![Cargo install](https://img.shields.io/badge/install-cargo_install-CE412B?logo=rust&logoColor=white)](#installation)
+
 Codex Rehome is a defensive CLI for inspecting, planning, remapping, moving, verifying, and rolling back local Codex Desktop/CLI workspace associations after a project directory changes. Codex stores absolute working-directory references in several local stores; moving files alone can leave threads grouped under the old path.
 
 > Codex Rehome is an independent community project and is not affiliated with or endorsed by OpenAI.
