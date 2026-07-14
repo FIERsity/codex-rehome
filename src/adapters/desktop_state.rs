@@ -15,7 +15,7 @@ pub fn discover(home: &Path, root: &Path, d: &mut Discovery) -> Result<()> {
         return Ok(());
     }
     let v: Value = serde_json::from_slice(&fs::read(&p)?)?;
-    let n = count(&v, root, None)?;
+    let n = count(&v, root, false)?;
     if n > 0 {
         d.changes.push(Change {
             store: "desktop_state".into(),
@@ -26,22 +26,23 @@ pub fn discover(home: &Path, root: &Path, d: &mut Discovery) -> Result<()> {
     }
     Ok(())
 }
-fn count(v: &Value, root: &Path, key: Option<&str>) -> Result<usize> {
+fn count(v: &Value, root: &Path, active: bool) -> Result<usize> {
     match v {
-        Value::String(s)
-            if key.is_some_and(|k| KEYS.contains(&k)) && Path::new(s).is_absolute() =>
-        {
+        Value::String(s) if active && Path::new(s).is_absolute() => {
             Ok(usize::from(belongs_to(Path::new(s), root)?))
         }
-        Value::Array(a) => a.iter().map(|x| count(x, root, key)).sum(),
-        Value::Object(m) => m.iter().map(|(k, x)| count(x, root, Some(k))).sum(),
+        Value::Array(a) => a.iter().map(|x| count(x, root, active)).sum(),
+        Value::Object(m) => m
+            .iter()
+            .map(|(k, x)| count(x, root, active || KEYS.contains(&k.as_str())))
+            .sum(),
         _ => Ok(0),
     }
 }
-pub(crate) fn rewrite(v: &mut Value, old: &Path, new: &Path, key: Option<&str>) -> Result<usize> {
+pub(crate) fn rewrite(v: &mut Value, old: &Path, new: &Path, active: bool) -> Result<usize> {
     let mut n = 0;
     match v {
-        Value::String(s) if key.is_some_and(|k| KEYS.contains(&k)) => {
+        Value::String(s) if active => {
             if Path::new(s).is_absolute() {
                 if let Some(p) = crate::path_map::remap(Path::new(s), old, new)? {
                     *s = p.to_string_lossy().into();
@@ -51,15 +52,50 @@ pub(crate) fn rewrite(v: &mut Value, old: &Path, new: &Path, key: Option<&str>) 
         }
         Value::Array(a) => {
             for x in a {
-                n += rewrite(x, old, new, key)?
+                n += rewrite(x, old, new, active)?
             }
         }
         Value::Object(m) => {
             for (k, x) in m {
-                n += rewrite(x, old, new, Some(k))?
+                n += rewrite(x, old, new, active || KEYS.contains(&k.as_str()))?
             }
         }
         _ => {}
     }
     Ok(n)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn nested_hint_is_rewritten() {
+        let mut v = serde_json::json!({"thread-workspace-root-hints":{"id":"/old/project/sub"}});
+        assert_eq!(
+            rewrite(
+                &mut v,
+                Path::new("/old/project"),
+                Path::new("/new/project"),
+                false
+            )
+            .unwrap(),
+            1
+        );
+        assert_eq!(v["thread-workspace-root-hints"]["id"], "/new/project/sub");
+    }
+    #[test]
+    fn unrelated_prose_is_untouched() {
+        let mut v = serde_json::json!({"note":"/old/project appears in prose"});
+        assert_eq!(
+            rewrite(
+                &mut v,
+                Path::new("/old/project"),
+                Path::new("/new/project"),
+                false
+            )
+            .unwrap(),
+            0
+        );
+        assert_eq!(v["note"], "/old/project appears in prose");
+    }
 }

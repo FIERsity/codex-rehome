@@ -1,6 +1,5 @@
 use crate::discovery::Discovery;
 use anyhow::Result;
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -22,8 +21,8 @@ pub struct Change {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MigrationPlan {
     pub format_version: u32,
+    /// Stable digest of the semantic plan. Execution IDs live in the manifest.
     pub migration_id: String,
-    pub created_at: DateTime<Utc>,
     pub tool_version: String,
     pub codex_version: Option<String>,
     pub operation: Operation,
@@ -34,27 +33,14 @@ pub struct MigrationPlan {
     pub thread_ids: Vec<String>,
     pub changes: Vec<Change>,
     pub warnings: Vec<String>,
+    pub state_schema_fingerprint: Option<String>,
 }
 
 impl MigrationPlan {
     pub fn build(old: &Path, new: &Path, operation: Operation, d: &Discovery) -> Result<Self> {
-        let mut hasher = Sha256::new();
-        hasher.update(old.as_os_str().as_encoded_bytes());
-        hasher.update([0]);
-        hasher.update(new.as_os_str().as_encoded_bytes());
-        hasher.update(match operation {
-            Operation::Move => &b"move"[..],
-            Operation::Remap => &b"remap"[..],
-        });
-        let id = format!(
-            "{}-{}",
-            Utc::now().format("%Y%m%dT%H%M%SZ"),
-            &hex::encode(hasher.finalize())[..12]
-        );
-        Ok(Self {
-            format_version: 1,
-            migration_id: id,
-            created_at: Utc::now(),
+        let mut plan = Self {
+            format_version: 2,
+            migration_id: String::new(),
             tool_version: env!("CARGO_PKG_VERSION").into(),
             codex_version: d.codex_version.clone(),
             operation,
@@ -65,6 +51,15 @@ impl MigrationPlan {
             thread_ids: d.threads.iter().map(|t| t.id.clone()).collect(),
             changes: d.changes.clone(),
             warnings: d.warnings.clone(),
-        })
+            state_schema_fingerprint: d.state_schema_fingerprint.clone(),
+        };
+        plan.thread_ids.sort();
+        plan.changes
+            .sort_by(|a, b| (&a.store, &a.file, &a.field).cmp(&(&b.store, &b.file, &b.field)));
+        let bytes = serde_json::to_vec(&plan)?;
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        plan.migration_id = format!("plan-{}", &hex::encode(hasher.finalize())[..20]);
+        Ok(plan)
     }
 }

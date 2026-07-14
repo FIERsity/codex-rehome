@@ -1,6 +1,6 @@
 [package]
 name = "codex-rehome"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 edition = "2024"
 license = "Apache-2.0"
 description = "Safely inspect, plan, remap, move, verify, and roll back local Codex workspaces"
@@ -19,8 +19,8 @@ sha2 = "0.10"
 tempfile = "3"
 unicode-normalization = "0.1"
 walkdir = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
 
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
-

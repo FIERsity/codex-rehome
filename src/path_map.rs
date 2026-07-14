@@ -70,4 +70,38 @@ mod tests {
             Path::new("/b/q/x")
         );
     }
+    #[test]
+    fn exact_root_maps() {
+        assert_eq!(
+            remap(Path::new("/a/p"), Path::new("/a/p/"), Path::new("/b/q"))
+                .unwrap()
+                .unwrap(),
+            Path::new("/b/q")
+        );
+    }
+    #[test]
+    fn relative_paths_are_rejected() {
+        assert!(belongs_to(Path::new("a/p"), Path::new("/a")).is_err());
+    }
+    #[test]
+    fn parent_cannot_escape_root() {
+        assert!(lexical_absolute(Path::new("/../../x")).is_err());
+    }
+    #[test]
+    fn unicode_nfc_and_nfd_are_equivalent() {
+        assert!(belongs_to(Path::new("/tmp/café/x"), Path::new("/tmp/cafe\u{301}")).unwrap());
+    }
+    #[test]
+    fn spaces_are_preserved() {
+        assert_eq!(
+            remap(
+                Path::new("/old root/a b"),
+                Path::new("/old root"),
+                Path::new("/new root")
+            )
+            .unwrap()
+            .unwrap(),
+            Path::new("/new root/a b")
+        );
+    }
 }

@@ -78,3 +78,26 @@ pub(crate) fn rewrite(v: &mut Value, old: &Path, new: &Path) -> Result<usize> {
     }
     Ok(n)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn payload_cwd_is_rewritten_but_message_is_not() {
+        let mut v = serde_json::json!({"payload":{"cwd":"/old/p/sub","message":"run cd /old/p"}});
+        assert_eq!(
+            rewrite(&mut v, Path::new("/old/p"), Path::new("/new/p")).unwrap(),
+            1
+        );
+        assert_eq!(v["payload"]["cwd"], "/new/p/sub");
+        assert_eq!(v["payload"]["message"], "run cd /old/p");
+    }
+    #[test]
+    fn similar_prefix_is_not_rewritten() {
+        let mut v = serde_json::json!({"payload":{"cwd":"/old/project-copy"}});
+        assert_eq!(
+            rewrite(&mut v, Path::new("/old/project"), Path::new("/new/project")).unwrap(),
+            0
+        );
+    }
+}

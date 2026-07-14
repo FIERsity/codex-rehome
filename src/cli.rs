@@ -76,7 +76,7 @@ pub fn run(cli: Cli) -> Result<()> {
         CommandKind::Move { old, new, yes } => execute(&old, &new, Operation::Move, yes)?,
         CommandKind::Verify { new, old } => {
             if let Some(o) = old {
-                verify::migrated(&o, &new, 0)?
+                verify::paths(&o, &new)?
             }
             print_json(&verify::report(&new)?)?
         }
@@ -148,7 +148,8 @@ fn execute(old: &Path, new: &Path, op: Operation, yes: bool) -> Result<()> {
             backup::write_manifest(&dir, &manifest)?;
         }
         mutate(&plan)?;
-        verify::migrated(old, new, plan.thread_ids.len())?;
+        verify::migrated(&plan)?;
+        backup::record_after_hashes(&mut manifest)?;
         manifest.status = "complete".into();
         backup::write_manifest(&dir, &manifest)?;
         Ok(())
@@ -162,7 +163,10 @@ fn execute(old: &Path, new: &Path, op: Operation, yes: bool) -> Result<()> {
         let _ = backup::write_manifest(&dir, &manifest);
         return Err(e);
     }
-    println!("migration {} completed", plan.migration_id);
+    println!(
+        "migration {} completed (plan {})",
+        manifest.migration_id, plan.migration_id
+    );
     Ok(())
 }
 fn mutate(plan: &MigrationPlan) -> Result<()> {
@@ -210,7 +214,7 @@ fn mutate_jsonl(path: &Path, old: &Path, new: &Path) -> Result<()> {
 }
 fn mutate_global(path: &Path, old: &Path, new: &Path) -> Result<()> {
     let mut v: Value = serde_json::from_slice(&fs::read(path)?)?;
-    adapters::desktop_state::rewrite(&mut v, old, new, None)?;
+    adapters::desktop_state::rewrite(&mut v, old, new, false)?;
     let mut tmp = tempfile::NamedTempFile::new_in(path.parent().unwrap())?;
     serde_json::to_writer_pretty(&mut tmp, &v)?;
     tmp.as_file().sync_all()?;

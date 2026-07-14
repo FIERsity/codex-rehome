@@ -16,6 +16,7 @@ pub struct Thread {
 pub struct Discovery {
     pub codex_home: PathBuf,
     pub codex_version: Option<String>,
+    pub state_schema_fingerprint: Option<String>,
     pub threads: Vec<Thread>,
     pub changes: Vec<Change>,
     pub warnings: Vec<String>,
@@ -40,6 +41,7 @@ pub fn inspect(root: &Path) -> Result<Discovery> {
     let mut d = Discovery {
         codex_home: home.clone(),
         codex_version: version,
+        state_schema_fingerprint: None,
         threads: vec![],
         changes: vec![],
         warnings: vec![],
